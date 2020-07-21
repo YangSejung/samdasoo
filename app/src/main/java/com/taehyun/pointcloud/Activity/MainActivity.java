@@ -32,9 +32,12 @@ import com.google.ar.core.exceptions.CameraNotAvailableException;
 import com.taehyun.pointcloud.Model.Plane;
 import com.taehyun.pointcloud.R;
 import com.taehyun.pointcloud.Renderer.BackgroundRenderer;
+import com.taehyun.pointcloud.Renderer.BoxRenderer;
 import com.taehyun.pointcloud.Renderer.LineRenderer;
 import com.taehyun.pointcloud.Renderer.PlaneRenderer;
 import com.taehyun.pointcloud.Renderer.PointCloudRenderer;
+import com.taehyun.pointcloud.Utils.MainSystem;
+import com.taehyun.pointcloud.Utils.SingleTonClass;
 import com.taehyun.pointcloud.Utils.VectorCal;
 
 
@@ -56,8 +59,6 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
     private int mViewportWidth = -1;//가로 세로 화면 전환할 때 사용
     private int mViewportHeight = -1;//가로 세로 화면 전환할 때 사용
 
-    private float epsilon = 0.20f;
-
     //카메라 권한
     private String[] REQUIRED_PERMISSSIONS = {Manifest.permission.CAMERA};//전체 권한을 받는 배열
     private final int PERMISSION_REQUEST_CODE = 0; // PROTECTION_NORMAL
@@ -66,12 +67,11 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
     BackgroundRenderer backgroundRenderer = new BackgroundRenderer();
     PointCloudRenderer pointCloudRenderer = new PointCloudRenderer();
     LineRenderer lineRenderer = new LineRenderer();
+    BoxRenderer boxRenderer = new BoxRenderer();
     private Session session;
     private Frame frame;//클래스들 정의
 
     private Button btn_record;
-
-    private Button btn_debug;
 
     private boolean recording = false;
     private int renderingMode = 0;  // 0:start, 1:recording, 2:recorded 3:pickPoint
@@ -89,6 +89,8 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
 
     private float circleRad = 0.25f;
     private float z_dis = 0;
+
+    private MainSystem mainSystem;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -103,15 +105,10 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
         glView.setRenderer(this);
         glView.setRenderMode(GLSurfaceView.RENDERMODE_CONTINUOUSLY);
 
+        mainSystem = new MainSystem(getApplicationContext(), pointCloudRenderer, glView);
 
-        btn_debug = findViewById(R.id.button1);
-        btn_debug.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                findPlane(plane.getUl(), plane.getUr(), plane.getLl(), plane.getLr());
-                renderingMode = 4;
-            }
-        });
+        // 기존 함수
+        /*
 
         glView.setOnTouchListener(new View.OnTouchListener() {
             @Override
@@ -142,6 +139,12 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
                 return false;
             }
         });
+
+        */
+
+        glView.setOnTouchListener(mainSystem.pickGround);
+
+
         btn_record = findViewById(R.id.btn_record);
         btn_record.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -229,6 +232,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
             pointCloudRenderer.createOnGlThread(this);//이제 생성자를 여기서 부르지 않고 createOnGLThread를 씀
             lineRenderer.createGlThread(this);//이제 생성자를 여기서 부르지 않고 createOnGLThread를 씀
             planeRenderer.createGlThread(this);//이제 생성자를 여기서 부르지 않고 createOnGLThread를 씀
+            boxRenderer.createGlThread(this);
         }catch (IOException e){
             e.getMessage();
         }
@@ -273,6 +277,8 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
             Camera camera = frame.getCamera();
             backgroundRenderer.draw(frame);
 
+            SingleTonClass.getInstance().frame = frame;
+
             if(camera.getTrackingState() == TrackingState.TRACKING){
                 camera.getViewMatrix(viewMatrix, 0);
                 camera.getProjectionMatrix(projMatrix, 0, 0.1f,100.0f);
@@ -295,10 +301,10 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
                     case 3:
                         pointCloudRenderer.draw_seedPoint(vpMatrix);
                         break;
-                    case 4:
-                        pointCloudRenderer.draw_objectPoint(viewMatrix, projMatrix);
-                        break;
                 }
+
+
+                /*
                 if(ray != null){
                     lineRenderer.draw(vpMatrix);
                 }
@@ -328,6 +334,12 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
                     lineRenderer.bufferUpdate(plane.gridPoints[7],plane.gridPoints[13]);
                     lineRenderer.draw(vpMatrix);
                 }
+                */
+
+                if(mainSystem.isBoxReady()){
+                    boxRenderer.bufferUpdate(mainSystem.boxPoints);
+                    boxRenderer.draw(vpMatrix);
+                }
             }
 
         }catch (CameraNotAvailableException e){
@@ -335,7 +347,7 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
         }
     }
 
-    float[] screenPointToWorldRay(float xPx, float yPx, Frame frame) {		// pointCloudActivity, 이름 그대로 화면 터치부분에서 월드 스페이스 ray로
+    public float[] screenPointToWorldRay(float xPx, float yPx, Frame frame) {		// pointCloudActivity, 이름 그대로 화면 터치부분에서 월드 스페이스 ray로
         //xPx : 터치한 x좌표, yPx : 터치한 y 좌표
         // ray[0~2] : camera pose
         // ray[3~5] : Unit vector of ray
@@ -428,41 +440,6 @@ public class MainActivity extends AppCompatActivity implements GLSurfaceView.Ren
                 Toast.makeText(getApplicationContext(), "평면 추출 실패",Toast.LENGTH_SHORT).show();
             }
         }
-    }
-
-    private void findPlane(float[] ul, float[] ur, float[] ll, float[] lr){
-        float[] vec1 = VectorCal.sub(lr, ll);
-        float[] vec2 = VectorCal.sub(ul, ll);
-
-        float[] normalVector = VectorCal.outer(vec1,vec2);
-        VectorCal.normalize(normalVector);
-
-        HashMap<Integer, float[]> tmp;
-        tmp = pointCloudRenderer.filteredPoints;
-        for(int id : tmp.keySet())
-        {
-            float[] point = tmp.get(id);
-            float a = VectorCal.inner(normalVector,point);
-
-            if(a < -1-epsilon || a> -1+epsilon)
-            {
-                pointCloudRenderer.objectPoints.put(id,point);
-            }
-
-        }
-
-
-            /*for (int id : allPoints.keySet()) {
-                ArrayList<float[]> list = allPoints.get(id);
-                float mean_x = 0.0f, mean_y = 0.0f, mean_z = 0.0f;
-                for (float[] p : list) {
-                    mean_x += p[0]; //  x
-                    mean_y += p[1]; //  y
-                    mean_z += p[2]; //  z
-                }
-                mean_z /= list.size();
-                mean_x /= list.size();
-                mean_y /= list.size();*/
     }
 
 }

@@ -95,7 +95,7 @@ public class PointCloudRenderer {
     GLES20.glGenBuffers(1, buffers2, 0);
     vbo_object = buffers2[0];
     GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo_object);
-    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, 99999, null, GLES20.GL_DYNAMIC_DRAW);
+    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, vboSize, null, GLES20.GL_DYNAMIC_DRAW);
     GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
 
 
@@ -203,15 +203,11 @@ public class PointCloudRenderer {
     ShaderUtil.checkGLError(TAG, "Draw");
   }
 
-
   public void draw_objectPoint(float[] cameraView, float[] cameraPerspective) {
     float[] modelViewProjection = new float[16];
     Matrix.multiplyMM(modelViewProjection, 0, cameraPerspective, 0, cameraView, 0);
 
     ShaderUtil.checkGLError(TAG, "Before draw");
-
-
-
     ByteBuffer bb_object = ByteBuffer.allocateDirect(4 * 4 * objectPoints.size());
     bb_object.order(ByteOrder.nativeOrder());
     FloatBuffer objectPointsBuffer = bb_object.asFloatBuffer();
@@ -227,7 +223,7 @@ public class PointCloudRenderer {
 
     GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo_object);
     // If the VBO is not large enough to fit the new point cloud, resize it.
-    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, 99999, null, GLES20.GL_DYNAMIC_DRAW);
+    GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, vboSize, null, GLES20.GL_DYNAMIC_DRAW);
 
     GLES20.glBufferSubData(GLES20.GL_ARRAY_BUFFER, 0, (objectPointsBuffer.limit() / FLOATS_PER_POINT) * BYTES_PER_POINT, objectPointsBuffer);
     GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
@@ -247,8 +243,6 @@ public class PointCloudRenderer {
 
     ShaderUtil.checkGLError(TAG, "Draw");
   }
-
-
 
   public void draw_conf(float[] cameraView, float[] cameraPerspective){
     float[] modelViewProjection = new float[16];
